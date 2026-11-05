@@ -6,6 +6,7 @@ local BUILD_TRACE = paths.BPC .. ":BuildTrace"
 
 describe("move ui", function()
     local env, ctx, bpc, hit, bench, wall, rock
+    local repair -- the highlight material that the soft reference resolves to, nil while it is not loaded
     local now, traces, loads = 0, 0, {}
 
     local function part(class, gridType)
@@ -33,13 +34,17 @@ describe("move ui", function()
         rock = fakes.object({ class = "BP_Rock_C" })
         hit = bench
         -- The highlight material is in memory unless a test removes it.
-        env.objects[paths.REPAIR_MATERIAL] = fakes.object({ class = "MaterialInstanceConstant" })
+        repair = fakes.object({ class = "MaterialInstanceConstant" })
         env.objects[paths.STATIC_MESH] = fakes.object({ class = "Class", name = "StaticMeshComponent" })
         loads = {}
         env.objects[paths.KSL] = fakes.object({
             class = "KismetSystemLibrary",
             LoadAsset = function(_, context, ptr, onLoaded, info)
                 loads[#loads + 1] = { context = context, ptr = ptr, onLoaded = onLoaded, info = info }
+            end,
+            Conv_SoftObjectReferenceToObject = function(_, ptr)
+                assert(ptr == "soft pointer", "the soft reference of the building config")
+                return repair
             end,
         })
         bpc = fakes.object({
@@ -67,6 +72,7 @@ describe("move ui", function()
         ctx.bp = require("bb.hooks").new(ctx)
         require("bb.move.ui").install(ctx)
         ctx.bp.start()
+        if not toolLater then ctx.bp.wake("build mode") end
         ctx.emit("move mode", { on = true })
     end
 
@@ -121,15 +127,18 @@ describe("move ui", function()
                 env.objects[paths.TOOL] = fakes.object({ class = "Class", name = "BP_Holdable_MultiTool_C" })
             end
 
-            it("shows the hints of the local tool again when the hook registers while the tool is held", function()
-                firstEquip()
-                env.tick()
-                assert.are.same({ "ClearTemporaryInputHints" }, fakes.callNames(hud))
-                assert.are.same({ "ShowHUDInputHints", hud }, tool.calls[1])
-                assert.are.same({}, otherTool.calls)
-            end)
+            it(
+                "shows the hints of the local tool again when the hook registers at the entry into build mode",
+                function()
+                    firstEquip()
+                    ctx.bp.wake("build mode")
+                    assert.are.same({ "ClearTemporaryInputHints" }, fakes.callNames(hud))
+                    assert.are.same({ "ShowHUDInputHints", hud }, tool.calls[1])
+                    assert.are.same({}, otherTool.calls)
+                end
+            )
 
-            it("waits for the first frame when the building component registers in the same pass", function()
+            it("waits for the first frame of this feature when the hook registers before it", function()
                 install(true)
                 hud = fakes.widget("UW_HUD_C")
                 env.objects[paths.PERMA_LIB] = fakes.object({
@@ -141,7 +150,7 @@ describe("move ui", function()
                 tool = fakes.widget("BP_Holdable_MultiTool_C", { OwningCharacter = bpc.OwningCharacter })
                 env.allOf["BP_Holdable_MultiTool_C"] = { tool }
                 env.objects[paths.TOOL] = fakes.object({ class = "Class", name = "BP_Holdable_MultiTool_C" })
-                env.tick()
+                ctx.bp.wake("build mode")
                 assert.are.same({}, tool.calls)
                 frame()
                 assert.are.same({ "ShowHUDInputHints", hud }, tool.calls[1])
@@ -152,7 +161,7 @@ describe("move ui", function()
             it("shows nothing again when the tool is no longer held", function()
                 firstEquip()
                 bpc.BuildMode = 0
-                env.tick()
+                ctx.bp.wake("build mode")
                 assert.are.same({}, hud.calls)
                 assert.are.same({}, tool.calls)
             end)
@@ -185,7 +194,7 @@ describe("move ui", function()
 
         it("loads the material asynchronously when it is not in memory, and turns the highlight on later", function()
             install()
-            env.objects[paths.REPAIR_MATERIAL] = nil
+            repair = nil
             frame()
             assert.are.same({}, toggles(bench))
             assert.are.equal(1, #loads)
@@ -202,9 +211,24 @@ describe("move ui", function()
             frame(1.2)
             assert.are.equal(2, #loads)
             assert.are_not.equal(loads[1].info.UUID, loads[2].info.UUID)
-            env.objects[paths.REPAIR_MATERIAL] = fakes.object({ class = "MaterialInstanceConstant" })
-            frame()
+            repair = fakes.object({ class = "MaterialInstanceConstant" })
+            frame(0.5)
             assert.are.same({ true }, toggles(bench))
+        end)
+
+        -- A lookup by path that misses walks the whole object array (a crash while the world streams).
+        it("looks up no game asset by path while the material is not loaded", function()
+            install()
+            repair = nil
+            local before = #env.spy.StaticFindObject.calls
+            for _ = 1, 5 do
+                frame(0.15)
+            end
+            for i = before + 1, #env.spy.StaticFindObject.calls do
+                local path = tostring(env.spy.StaticFindObject.calls[i].vals[1])
+                assert(not path:match("^/Game/"), path)
+            end
+            assert.are.equal(1, #loads)
         end)
 
         it("runs the camera trace at most every 0.1 s and keeps the last result between", function()
@@ -251,7 +275,7 @@ describe("move ui", function()
 
         it("makes each highlight mesh blue with a dynamic instance of the repair material", function()
             install()
-            local material = env.objects[paths.REPAIR_MATERIAL]
+            local material = repair
             local mid = fakes.widget("MaterialInstanceDynamic")
             local function mesh(slotMaterial)
                 return fakes.widget("StaticMeshComponent", {

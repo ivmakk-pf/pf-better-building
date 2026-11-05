@@ -4,6 +4,12 @@ All notable changes to this mod are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-05
+
+### Fixed
+
+- The game no longer crashes at random while the world loads or streams, before you first take the Building Tool in hand.
+
 ## [1.0.0] - 2026-11-05
 
 ### Added

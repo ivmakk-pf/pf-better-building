@@ -83,7 +83,7 @@ describe("main", function()
         local env = loadMain(DEFAULTS)
         assert.are.equal(
             1,
-            #lines(env, "^%[BetterBuilding%] v1%.0%.0 loaded %(collision on, no%-build zones on, move on, key V%)\n$")
+            #lines(env, "^%[BetterBuilding%] v1%.0%.1 loaded %(collision on, no%-build zones on, move on, key V%)\n$")
         )
     end)
 

@@ -1,4 +1,4 @@
-![version](https://img.shields.io/badge/version-1.0.0-blue) ![coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
+![version](https://img.shields.io/badge/version-1.0.1-blue) ![coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
 
 # Better Building
 

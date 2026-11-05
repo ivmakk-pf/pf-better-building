@@ -62,8 +62,6 @@ describe("move feature", function()
         env.objects[paths.BPC] = fakes.object({ class = "Class", name = "BP_PlayerBuildingComponent_C" })
         env.objects[paths.TOOL] = fakes.object({ class = "Class", name = "BP_Holdable_MultiTool_C" })
         env.objects[paths.BUILD_PART] = fakes.object({ class = "Class", name = "BuildPartBase" })
-        env.objects[paths.WORKSTATION] = fakes.object({ class = "Class", name = "BP_MasterWorkstation_C" })
-        env.objects[paths.UPGRADE] = fakes.object({ class = "Class", name = "BP_MasterWorkstationUpgrade_C" })
         target = makeTarget and makeTarget() or part("BP_Chest_C")
         timers = {}
         env.objects[paths.KSL] = fakes.object({
@@ -370,6 +368,50 @@ describe("move feature", function()
             end)
         end
 
+        -- The tool class loads at the first equip. A lookup of a class that is not in memory walks
+        -- the whole object array, which crashed the game while it streamed the world.
+        it("looks up the Building Tool class only at each entry into build mode, then registers its hook", function()
+            env = fakes.install()
+            for _, name in ipairs({ "bb.hooks", "bb.move.feature" }) do
+                package.loaded[name] = nil
+            end
+            env.objects[paths.BPC] = fakes.object({ class = "Class", name = "BP_PlayerBuildingComponent_C" })
+            ctx = require("bb.core.context").new("T")
+            ctx.config = { allow_move = true, move_key = "V", verbose = true }
+            ctx.bp = require("bb.hooks").new(ctx)
+            require("bb.move.feature").install(ctx)
+            ctx.bp.start()
+            env.loadMap.post[1]()
+            local component = fakes.object({ class = "BP_PlayerBuildingComponent_C", BuildMode = 0 })
+            local function trace(mode)
+                component.BuildMode = mode
+                env.hooks[BUILD_TRACE](fakes.param(component))
+            end
+            local function lookups()
+                local n = 0
+                for _, call in ipairs(env.spy.StaticFindObject.calls) do
+                    if call.vals[1] == paths.TOOL then n = n + 1 end
+                end
+                return n
+            end
+            trace(0)
+            trace(0)
+            assert.are.equal(0, lookups())
+            trace(1)
+            trace(1)
+            trace(1)
+            assert.are.equal(1, lookups())
+            assert.is_nil(env.hooks[HOLD])
+            trace(0)
+            env.objects[paths.TOOL] = fakes.object({ class = "Class", name = "BP_Holdable_MultiTool_C" })
+            trace(3)
+            assert.are.equal(2, lookups())
+            assert.is_function(env.hooks[HOLD])
+            trace(0)
+            trace(1)
+            assert.are.equal(2, lookups())
+        end)
+
         it("does nothing before the building component is known", function()
             env = fakes.install()
             package.loaded["bb.move.feature"] = nil
@@ -648,10 +690,12 @@ describe("move feature", function()
             assert.is_false(called(target, "FindAndUpgradeWorkstation"))
         end)
 
-        it("gives no warning when the workstation classes are not in memory", function()
+        -- A lookup of a class that is not in memory walks the whole object array.
+        it("looks up no workstation class, and gives no warning", function()
             install()
-            env.objects[paths.WORKSTATION], env.objects[paths.UPGRADE] = nil, nil
             commit()
+            assert.spy(env.spy.StaticFindObject).was.not_called_with(paths.WORKSTATION)
+            assert.spy(env.spy.StaticFindObject).was.not_called_with(paths.UPGRADE)
             assert.are.same({}, lines("WARN"))
         end)
     end)

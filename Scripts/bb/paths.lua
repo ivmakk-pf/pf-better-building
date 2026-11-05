@@ -11,5 +11,4 @@ return {
     STATIC_MESH = "/Script/Engine.StaticMeshComponent",
     KSL = "/Script/Engine.Default__KismetSystemLibrary",
     PERMA_LIB = "/Script/Permafrost.Default__PermaFunctionLibrary",
-    REPAIR_MATERIAL = "/Game/Permafrost/Assets/Items/BuildParts/Materials/MI_RepairSelection_Opaque.MI_RepairSelection_Opaque",
 }

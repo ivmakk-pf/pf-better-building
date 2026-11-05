@@ -1,5 +1,4 @@
 local fakes = require("fakes")
-local match = require("luassert.match")
 
 local BPC = "/Game/X/BP_PlayerBuildingComponent.BP_PlayerBuildingComponent_C"
 
@@ -45,6 +44,18 @@ describe("bb.hooks", function()
         assert.are.equal(1, #lines("hook .*CheckForExclusionZone %(map load%)"))
     end)
 
+    -- A lookup of a class that is not in memory walks the whole object array: one for each class.
+    it("looks up each class once in a pass, also with several hooks on it", function()
+        reg.listen("zone", BPC, "CheckForExclusionZone", function() end, {})
+        reg.listen("collision", BPC, "CollisionCheck", function() end, {})
+        reg.start()
+        assert.spy(env.spy.StaticFindObject).was.called(1)
+        load()
+        env.loadMap.post[1]()
+        assert.spy(env.spy.StaticFindObject).was.called(2)
+        assert.spy(env.spy.RegisterHook).was.called(2)
+    end)
+
     it("registers at the start when the class is in memory already", function()
         load()
         reg.listen("zone", BPC, "CheckForExclusionZone", function() end, {})
@@ -52,49 +63,36 @@ describe("bb.hooks", function()
         assert.spy(env.spy.RegisterHook).was.called(1)
     end)
 
-    it("registers from a retry each second, with one deferred call each run, and then stops the retry", function()
-        reg.listen("zone", BPC, "CheckForExclusionZone", function() end, {})
-        reg.start()
-        local deferred = {}
-        -- A variable key, so LuaLS keeps the UE4SS type of the global (testing-tooling.md).
-        local name = "ExecuteInGameThread"
-        _G[name] = function(fn)
-            deferred[#deferred + 1] = fn
-        end
-        assert.spy(env.spy.LoopAsync).was.called_with(1000, match._)
-        env.tick()
-        assert.are.equal(1, #deferred)
-        deferred[1]()
-        assert.spy(env.spy.RegisterHook).was.not_called()
-        load()
-        env.tick()
-        deferred[2]()
-        assert.spy(env.spy.RegisterHook).was.called(1)
-        assert.are.equal(1, #lines("hook .*CheckForExclusionZone %(retry%)"))
-        env.tick()
-        assert.are.equal(0, #env.loops)
-        assert.are.equal(2, #deferred)
-    end)
-
-    it("queues no second deferred call while one waits", function()
-        reg.listen("zone", BPC, "CheckForExclusionZone", function() end, {})
-        reg.start()
-        local deferred = {}
-        local name = "ExecuteInGameThread"
-        _G[name] = function(fn)
-            deferred[#deferred + 1] = fn
-        end
-        env.tick()
-        env.tick()
-        assert.are.equal(1, #deferred)
-    end)
-
-    it("starts no retry when each hook registers at the start, and watches no new objects", function()
-        load()
+    -- A lookup of a class that is not in memory walks the whole object array, which crashed the game
+    -- while it streamed the world: no lookup runs on a timer.
+    it("starts no loop and watches no new objects, also while a hook waits for its class", function()
         reg.listen("zone", BPC, "CheckForExclusionZone", function() end, {})
         reg.start()
         assert.spy(env.spy.LoopAsync).was.not_called()
         assert.spy(env.spy.NotifyOnNewObject).was.not_called()
+        assert.spy(env.spy.StaticFindObject).was.called(1)
+    end)
+
+    it("registers a hook that waits for build mode only at wake, never at the start or a map load", function()
+        local TOOL = "/Game/X/BP_Holdable_MultiTool.BP_Holdable_MultiTool_C"
+        env.objects[TOOL] = fakes.object({ class = "Class", name = "BP_Holdable_MultiTool_C" })
+        reg.listen("hint", TOOL, "ShowHUDInputHints", function() end, { wait = "build mode" })
+        reg.start()
+        env.loadMap.post[1]()
+        assert.spy(env.spy.StaticFindObject).was.not_called()
+        assert.spy(env.spy.RegisterHook).was.not_called()
+        reg.wake("build mode")
+        reg.wake("build mode")
+        assert.spy(env.spy.RegisterHook).was.called(1)
+        assert.spy(env.spy.StaticFindObject).was.called(1)
+        assert.are.equal(1, #lines("hook .*ShowHUDInputHints %(build mode%)"))
+    end)
+
+    it("looks up no class of a hook with no wait at wake", function()
+        reg.listen("zone", BPC, "CheckForExclusionZone", function() end, {})
+        reg.start()
+        reg.wake("build mode")
+        assert.spy(env.spy.StaticFindObject).was.called(1)
     end)
 
     it("shares one hook between two listeners of one path, each in its own guard", function()

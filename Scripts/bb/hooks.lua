@@ -1,6 +1,10 @@
 -- The registration of the Blueprint hooks and the timing counter that the features share.
--- A Blueprint class is in memory only after its asset loads, so each hook registers at the first
--- trigger that finds its class: the start, a map load, or a retry each second while a hook waits.
+-- A Blueprint class is in memory only after its asset loads, so each hook registers at a trigger
+-- where its class should be in memory: the start and each map load, or, for a hook that waits for
+-- build mode, the entry into build mode (the Building Tool is in hand then).
+-- The class lookup is StaticFindObject: a class in memory is a hash lookup, but a miss walks the
+-- whole object array, and a walk while the async loading thread makes objects can read a half-made
+-- object: a native crash. So there is no retry on a timer, and each trigger is a rare event.
 -- The hooks of one path share one registration, and each listener runs in its own guard.
 -- No NotifyOnNewObject: UE4SS runs its callback on the thread that makes the object, also the async
 -- loading thread, and that callback waits for the Lua lock while a hook on the game thread holds it
@@ -11,19 +15,20 @@ local M = {}
 ---@field timed boolean? the calls go through the timing counter
 ---@field perFrame boolean? with timed: the hook runs once each frame, so its calls count the frames
 ---@field onRegister function? runs once, in a guard, right after the hook registers
+---@field wait "build mode"? the class loads with the Building Tool: the hook registers at wake(), not at the start or a map load
 
 ---@class BbHooks
 ---@field listen fun(key: string, classPath: string, fnName: string, fn: function, opts: BbListenOpts)
 ---@field start fun() installs the triggers and registers what is in memory already
+---@field wake fun(reason: string) registers the waiting hooks of build mode whose class is in memory
 ---@field timed fun(fn: function, perFrame: boolean?): function fn through the timing counter
 
 ---@param ctx BbContext
 ---@return BbHooks
 function M.new(ctx)
     local reg = {} ---@type BbHooks
-    local paths = {} ---@type { path: string, classPath: string, listeners: function[], done: boolean }[]
+    local paths = {} ---@type { path: string, classPath: string, listeners: function[], done: boolean, wait: string? }[]
     local byPath = {} ---@type table<string, table>
-    local queued = false
 
     -- The timing window: the time of the timed calls, the call count, and the frames (the most
     -- calls of one per-frame hook). It logs once a second, at the first call after the second.
@@ -65,7 +70,8 @@ function M.new(ctx)
         local path = classPath .. ":" .. fnName
         local entry = byPath[path]
         if not entry then
-            entry = { path = path, classPath = classPath, listeners = {}, onRegister = {}, done = false }
+            entry =
+                { path = path, classPath = classPath, listeners = {}, onRegister = {}, done = false, wait = opts.wait }
             byPath[path] = entry
             paths[#paths + 1] = entry
         end
@@ -94,25 +100,20 @@ function M.new(ctx)
         end
     end
 
-    -- Registers each waiting hook whose class is in memory now.
-    local function arm(reason)
+    -- Registers each hook of this wait kind (nil: no wait) that is not registered yet and whose
+    -- class is in memory now. Each class path is looked up once in a pass: the hooks of one class share it.
+    local function arm(reason, wait)
+        local found = {} ---@type table<string, boolean>
         for _, entry in ipairs(paths) do
-            if
-                not entry.done
-                and ctx.valid(ctx.try(function()
-                    return StaticFindObject(entry.classPath)
-                end))
-            then
-                register(entry, reason)
+            if not entry.done and entry.wait == wait then
+                if found[entry.classPath] == nil then
+                    found[entry.classPath] = ctx.valid(ctx.try(function()
+                        return StaticFindObject(entry.classPath)
+                    end))
+                end
+                if found[entry.classPath] then register(entry, reason) end
             end
         end
-    end
-
-    local function waiting()
-        for _, entry in ipairs(paths) do
-            if not entry.done then return true end
-        end
-        return false
     end
 
     function reg.start()
@@ -122,19 +123,10 @@ function M.new(ctx)
                 arm("map load")
             end))
         end)
-        if not waiting() then return end
-        -- The loop runs outside the game thread: it only queues one registration run at a time.
-        LoopAsync(1000, function()
-            if not waiting() then return true end
-            if not queued then
-                queued = true
-                ExecuteInGameThread(ctx.guard("retry", function()
-                    queued = false
-                    arm("retry")
-                end))
-            end
-            return false
-        end)
+    end
+
+    function reg.wake(reason)
+        arm(reason, "build mode")
     end
 
     return reg
