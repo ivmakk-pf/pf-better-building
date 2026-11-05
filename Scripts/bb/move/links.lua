@@ -22,12 +22,17 @@ end
 
 ---@param ctx BbContext
 function M.install(ctx)
-    local classes = {}
-
+    -- True when a class in the class chain of the object has the name of the class at path. It looks
+    -- up no class: a lookup of a class that is not in memory walks the whole object array.
     local function isA(obj, path)
-        if not ctx.valid(classes[path]) then classes[path] = StaticFindObject(path) end
-        -- A class that is not in memory has no instance, so the object is not one.
-        return ctx.valid(classes[path]) and obj:IsA(classes[path])
+        local name = path:match("%.([^.]+)$")
+        local class = obj:GetClass()
+        for _ = 1, 16 do
+            if not ctx.valid(class) then return false end
+            if class:GetFName():ToString() == name then return true end
+            class = class:GetSuperStruct()
+        end
+        return false
     end
 
     local function same(a, b)

@@ -1,7 +1,7 @@
 -- BetterBuilding: build over objects and in no-build zones, and move a placed construction that
 -- does not snap to the build grid. Each feature has its own switch in config.lua.
 local MOD = "BetterBuilding"
-local VERSION = "1.0.0"
+local VERSION = "1.0.1"
 
 local SCHEMA = require("bb.core.schema")
 

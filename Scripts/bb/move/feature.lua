@@ -153,8 +153,14 @@ function M.install(ctx)
 
     local listen = {}
 
+    -- The entry into build mode wakes the hooks of the Building Tool: the tool is in hand, so its
+    -- class is in memory.
+    local building = false
     ctx.bp.listen("move bpc", paths.BPC, "BuildTrace", function(self)
         bpc = self:get()
+        local inBuild = bpc.BuildMode ~= 0
+        if inBuild and not building then ctx.bp.wake("build mode") end
+        building = inBuild
     end, listen)
 
     ctx.bp.listen("move resources", paths.BPC, "CheckResources", function(self)
@@ -193,7 +199,7 @@ function M.install(ctx)
 
     ctx.bp.listen("move unequip", paths.TOOL, "LOCAL_OnHoldChange", function(_, heldP)
         if heldP:get() == false then exit("tool put away", "exit") end
-    end, {})
+    end, { wait = "build mode" })
 
     -- The right click opens the build menu. ShowBuildPartPreview closes it (false), which is no exit.
     ctx.hook("move menu", paths.UI_MANAGER .. ":ToggleBuildingMenu", function(_, showP)

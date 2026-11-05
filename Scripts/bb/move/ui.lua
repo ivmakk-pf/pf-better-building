@@ -10,6 +10,7 @@ local BUILD = 1 -- EBuildMode
 local CHARACTER_INPUTS = 2 -- EPermaInputMapType, as the Building Tool's own lines use
 local TRACE_EVERY = 0.1 -- s
 local LOAD_EVERY = 2 -- s, between two async loads of the highlight material
+local LOOKUP_EVERY = 0.5 -- s, from a lookup that missed the highlight material to the next one
 local COLOR = "Color" -- the vector parameter of the highlight material (yellow in the game)
 local BLUE = { R = 0.05, G = 0.35, B = 1, A = 1 }
 
@@ -20,12 +21,12 @@ function M.install(ctx)
     local active = false -- Move mode is on
     local localBpc = nil ---@type any the building component of the local player (BuildTrace runs only there)
     local lastTrace = -math.huge
-    local lastLoad, loadId = -math.huge, 9200
+    local lastLoad, lastMiss, loadId = -math.huge, -math.huge, 9200
 
     -- The tool class loads at the first equip, so its hints showed before this hook existed: when
     -- the hook registers while the local tool is held, the game shows its hints again, and the
-    -- hook adds the move line. Runs once, from the registration retry. When the building component
-    -- registers in the same pass, its first BuildTrace has not run yet, so the call waits for it.
+    -- hook adds the move line. Runs once, when the hook registers at the entry into build mode. When
+    -- this feature's BuildTrace has not run yet in that frame, the call waits for it.
     local hintsPending = false
     local function showHintsAgain()
         if not ctx.valid(localBpc) then
@@ -51,7 +52,7 @@ function M.install(ctx)
         local hud = hudP:get()
         local key, noPad = { KeyName = FName(ctx.config.move_key) }, { KeyName = FName("None") }
         hud:AddInputHint(FText("Move construction"), nil, CHARACTER_INPUTS, key, noPad, true)
-    end, { onRegister = showHintsAgain })
+    end, { onRegister = showHintsAgain, wait = "build mode" })
     local showHintsLater = ctx.guard("move hint registered", showHintsAgain)
 
     local function off()
@@ -67,18 +68,20 @@ function M.install(ctx)
     -- deadlocks inside a Lua hook while the game streams the world. So the mod loads it
     -- asynchronously (the latent LoadAsset) and turns the highlight on only when it is in memory.
     -- Nothing holds the material after the load, so the game can free it again: the check runs each time.
+    -- A lookup that misses walks the whole object array, so after a miss the next lookup waits.
     ---@return any material the material when it is in memory, else nil
     local function materialReady(bpc)
+        local now = ctx.now()
+        if now - lastMiss < LOOKUP_EVERY then return nil end
         local material = StaticFindObject(paths.REPAIR_MATERIAL)
         if ctx.valid(material) then return material end
-        local now = ctx.now()
-        if now - lastLoad >= LOAD_EVERY then
-            lastLoad, loadId = now, loadId + 1
-            local lib = StaticFindObject(paths.KSL) ---@type any
-            local info = { Linkage = 0, UUID = loadId, ExecutionFunction = FName("None"), CallbackTarget = bpc }
-            lib:LoadAsset(bpc, bpc.BuildingSystemConfig.RepairMaterial, nil, info)
-            ctx.trace("highlight material: async load started")
-        end
+        lastMiss = now
+        if now - lastLoad < LOAD_EVERY then return nil end
+        lastLoad, loadId = now, loadId + 1
+        local lib = StaticFindObject(paths.KSL) ---@type any
+        local info = { Linkage = 0, UUID = loadId, ExecutionFunction = FName("None"), CallbackTarget = bpc }
+        lib:LoadAsset(bpc, bpc.BuildingSystemConfig.RepairMaterial, nil, info)
+        ctx.trace("highlight material: async load started")
         return nil
     end
 

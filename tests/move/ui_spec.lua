@@ -67,6 +67,7 @@ describe("move ui", function()
         ctx.bp = require("bb.hooks").new(ctx)
         require("bb.move.ui").install(ctx)
         ctx.bp.start()
+        if not toolLater then ctx.bp.wake("build mode") end
         ctx.emit("move mode", { on = true })
     end
 
@@ -121,15 +122,18 @@ describe("move ui", function()
                 env.objects[paths.TOOL] = fakes.object({ class = "Class", name = "BP_Holdable_MultiTool_C" })
             end
 
-            it("shows the hints of the local tool again when the hook registers while the tool is held", function()
-                firstEquip()
-                env.tick()
-                assert.are.same({ "ClearTemporaryInputHints" }, fakes.callNames(hud))
-                assert.are.same({ "ShowHUDInputHints", hud }, tool.calls[1])
-                assert.are.same({}, otherTool.calls)
-            end)
+            it(
+                "shows the hints of the local tool again when the hook registers at the entry into build mode",
+                function()
+                    firstEquip()
+                    ctx.bp.wake("build mode")
+                    assert.are.same({ "ClearTemporaryInputHints" }, fakes.callNames(hud))
+                    assert.are.same({ "ShowHUDInputHints", hud }, tool.calls[1])
+                    assert.are.same({}, otherTool.calls)
+                end
+            )
 
-            it("waits for the first frame when the building component registers in the same pass", function()
+            it("waits for the first frame of this feature when the hook registers before it", function()
                 install(true)
                 hud = fakes.widget("UW_HUD_C")
                 env.objects[paths.PERMA_LIB] = fakes.object({
@@ -141,7 +145,7 @@ describe("move ui", function()
                 tool = fakes.widget("BP_Holdable_MultiTool_C", { OwningCharacter = bpc.OwningCharacter })
                 env.allOf["BP_Holdable_MultiTool_C"] = { tool }
                 env.objects[paths.TOOL] = fakes.object({ class = "Class", name = "BP_Holdable_MultiTool_C" })
-                env.tick()
+                ctx.bp.wake("build mode")
                 assert.are.same({}, tool.calls)
                 frame()
                 assert.are.same({ "ShowHUDInputHints", hud }, tool.calls[1])
@@ -152,7 +156,7 @@ describe("move ui", function()
             it("shows nothing again when the tool is no longer held", function()
                 firstEquip()
                 bpc.BuildMode = 0
-                env.tick()
+                ctx.bp.wake("build mode")
                 assert.are.same({}, hud.calls)
                 assert.are.same({}, tool.calls)
             end)
@@ -203,8 +207,28 @@ describe("move ui", function()
             assert.are.equal(2, #loads)
             assert.are_not.equal(loads[1].info.UUID, loads[2].info.UUID)
             env.objects[paths.REPAIR_MATERIAL] = fakes.object({ class = "MaterialInstanceConstant" })
-            frame()
+            frame(0.5)
             assert.are.same({ true }, toggles(bench))
+        end)
+
+        -- A lookup that misses walks the whole object array (a crash while the world streams).
+        it("looks up a missing material at most every 0.5 s", function()
+            install()
+            env.objects[paths.REPAIR_MATERIAL] = nil
+            local function lookups()
+                local n = 0
+                for _, call in ipairs(env.spy.StaticFindObject.calls) do
+                    if call.vals[1] == paths.REPAIR_MATERIAL then n = n + 1 end
+                end
+                return n
+            end
+            frame()
+            for _ = 1, 3 do
+                frame(0.15)
+            end
+            assert.are.equal(1, lookups())
+            frame(0.15)
+            assert.are.equal(2, lookups())
         end)
 
         it("runs the camera trace at most every 0.1 s and keeps the last result between", function()

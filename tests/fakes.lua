@@ -216,15 +216,36 @@ function M.object(props)
     o.GetAddress = function()
         return address
     end
+    -- The class chain: the class, then each name in `isa`, in order, then an invalid object.
     o.GetClass = function(self)
-        return {
-            GetFName = function()
-                return fname(self.class)
-            end,
-            GetCDO = function()
-                return self.cdo
-            end,
-        }
+        local names = { self.class }
+        for _, name in ipairs(self.isa or {}) do
+            names[#names + 1] = name
+        end
+        local function class(i)
+            if not names[i] then
+                return {
+                    IsValid = function()
+                        return false
+                    end,
+                }
+            end
+            return {
+                IsValid = function()
+                    return true
+                end,
+                GetFName = function()
+                    return fname(names[i])
+                end,
+                GetCDO = function()
+                    return self.cdo
+                end,
+                GetSuperStruct = function()
+                    return class(i + 1)
+                end,
+            }
+        end
+        return class(1)
     end
     o.IsA = function(self, class)
         if class.name == self.class then return true end
