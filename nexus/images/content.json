@@ -1,0 +1,40 @@
+{
+  "nexus": {
+    "name": "Better Building",
+    "author": "ivmakk0",
+    "category": "Buildings",
+    "summary": "Building overhaul: fewer collisions, build in no-build zones, move furniture."
+  },
+  "thumbnail": {
+    "out": "00-thumbnail.jpg",
+    "screenshot": "move-mode-blue-highlight.jpg",
+    "crop": [0, 108, 1500, 844],
+    "layout": { "left": 310 },
+    "titleIcon": { "icon": "UI/Journal/Textures/ReworkIcons/T_J_Building_Icon", "size": 240 },
+    "title": [{ "text": "Better" }, { "text": "Building", "accent": true }],
+    "rows": [
+      {
+        "icon": "UI/Journal/SkillProgression/Assets/T_Skill_Building_Icon",
+        "iconSize": 96,
+        "caption": [
+          [{ "text": "Build over " }, { "text": "world objects", "accent": true }],
+          [{ "text": "and in " }, { "text": "no-build zones", "accent": true }]
+        ]
+      },
+      {
+        "key": "V",
+        "caption": [[{ "text": "Move", "accent": true }, { "text": " furniture and" }], { "text": "workstations" }]
+      }
+    ]
+  },
+  "background": {
+    "out": "background.jpg",
+    "screenshot": "move-mode-blue-highlight.jpg",
+    "crop": [0, 410, 1700, 486],
+    "darken": [
+      "rgba(18,25,36,0.3)",
+      "linear-gradient(90deg, rgba(18,25,36,0.75) 0%, rgba(18,25,36,0.35) 40%, rgba(18,25,36,0) 60%)",
+      "linear-gradient(0deg, rgba(18,25,36,0.7) 0%, rgba(18,25,36,0.2) 45%, rgba(18,25,36,0) 65%)"
+    ]
+  }
+}

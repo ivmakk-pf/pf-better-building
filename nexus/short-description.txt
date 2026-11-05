@@ -1,0 +1,1 @@
+Building overhaul: fewer collisions, build in no-build zones, move furniture.

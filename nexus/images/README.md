@@ -1,0 +1,11 @@
+# Nexus images
+
+Made from in-game screenshots at 2000x1125 (the code of version 1.0.0, default settings). The screenshots in `src/` are the copies that the chat gave: a full-resolution original replaces its copy under the same name, then a new render.
+
+| File | Size | Role | Content |
+|---|---|---|---|
+| `00-thumbnail.jpg` | 1920x1080 | Gallery, first (Nexus uses it as the mods-grid thumbnail) | The title "Better Building" ("Building" in gold) with the white hammer of the journal (`T_J_Building_Icon`) as the title icon on the left, as on BetterWoodcutting. Two lines: the hammer of the Building skill (`T_Skill_Building_Icon`) with "Build over world objects and in no-build zones" ("world objects" and "no-build zones" in gold), and a `V` keycap with "Move furniture and workstations" ("Move" in gold). The background is a 1500x844 crop of `src/move-mode-blue-highlight.jpg`, scaled up by 1.28 so the blue chest of Move mode sits on the right: the chest is at the screen center of the shot, under the crosshair. The series layout of the Permafrost mods (`MOD-IMAGES.md`); on the smallest grid card, the check box and the update badge cover a small part of the top-left corner of the title and of the title icon, which is accepted. Rendered with the nexus-mod-images tool from `content.json`. |
+| `background.jpg` | 1300x372 | Page background | A 1700x486 crop of `src/move-mode-blue-highlight.jpg` under the quest text of the HUD, scaled down and darkened, most on the left and at the bottom, where Nexus puts the breadcrumbs, the title, the stats, and the buttons. The blue chest sits in the upper middle. Rendered with the nexus-mod-images tool from `content.json`. |
+| `gallery-1-build-over-stump.jpg` | 1920x1080 | Gallery | The green preview of a wooden foundation over a tree stump: the place is valid. The hint list shows "Move construction" with `V`. `src/build-over-stump.jpg`, scaled. |
+| `gallery-2-move-mode-highlight.jpg` | 1920x1080 | Gallery | Move mode: a Wooden Chest in the blue highlight under the crosshair. `src/move-mode-blue-highlight.jpg`, scaled. |
+| `gallery-3-move-preview.jpg` | 1920x1080 | Gallery | A move: the green preview of a Wooden Chest above the chest, which still stands at its old place. `src/move-preview-old-place.jpg`, scaled. |
