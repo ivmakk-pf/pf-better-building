@@ -154,12 +154,15 @@ function M.install(ctx)
     local listen = {}
 
     -- The entry into build mode wakes the hooks of the Building Tool: the tool is in hand, so its
-    -- class is in memory.
+    -- class is in memory. The wake runs outside this hook, so no hook registers inside a hook call.
     local building = false
+    local wake = ctx.guard("build mode", function()
+        ctx.bp.wake("build mode")
+    end)
     ctx.bp.listen("move bpc", paths.BPC, "BuildTrace", function(self)
         bpc = self:get()
         local inBuild = bpc.BuildMode ~= 0
-        if inBuild and not building then ctx.bp.wake("build mode") end
+        if inBuild and not building then ExecuteInGameThread(wake) end
         building = inBuild
     end, listen)
 

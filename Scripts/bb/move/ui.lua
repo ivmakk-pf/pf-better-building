@@ -10,7 +10,6 @@ local BUILD = 1 -- EBuildMode
 local CHARACTER_INPUTS = 2 -- EPermaInputMapType, as the Building Tool's own lines use
 local TRACE_EVERY = 0.1 -- s
 local LOAD_EVERY = 2 -- s, between two async loads of the highlight material
-local LOOKUP_EVERY = 0.5 -- s, from a lookup that missed the highlight material to the next one
 local COLOR = "Color" -- the vector parameter of the highlight material (yellow in the game)
 local BLUE = { R = 0.05, G = 0.35, B = 1, A = 1 }
 
@@ -21,7 +20,7 @@ function M.install(ctx)
     local active = false -- Move mode is on
     local localBpc = nil ---@type any the building component of the local player (BuildTrace runs only there)
     local lastTrace = -math.huge
-    local lastLoad, lastMiss, loadId = -math.huge, -math.huge, 9200
+    local lastLoad, loadId = -math.huge, 9200
 
     -- The tool class loads at the first equip, so its hints showed before this hook existed: when
     -- the hook registers while the local tool is held, the game shows its hints again, and the
@@ -68,19 +67,22 @@ function M.install(ctx)
     -- deadlocks inside a Lua hook while the game streams the world. So the mod loads it
     -- asynchronously (the latent LoadAsset) and turns the highlight on only when it is in memory.
     -- Nothing holds the material after the load, so the game can free it again: the check runs each time.
-    -- A lookup that misses walks the whole object array, so after a miss the next lookup waits.
+    -- The check resolves the soft reference of the building config: the engine finds a soft
+    -- reference in its hash tables only. A lookup by path (StaticFindObject) walks the whole object
+    -- array when it misses, which can crash the game while it streams the world.
     ---@return any material the material when it is in memory, else nil
     local function materialReady(bpc)
-        local now = ctx.now()
-        if now - lastMiss < LOOKUP_EVERY then return nil end
-        local material = StaticFindObject(paths.REPAIR_MATERIAL)
+        local lib = StaticFindObject(paths.KSL) ---@type any
+        local soft = bpc.BuildingSystemConfig.RepairMaterial
+        local material = ctx.try(function()
+            return lib:Conv_SoftObjectReferenceToObject(soft)
+        end)
         if ctx.valid(material) then return material end
-        lastMiss = now
+        local now = ctx.now()
         if now - lastLoad < LOAD_EVERY then return nil end
         lastLoad, loadId = now, loadId + 1
-        local lib = StaticFindObject(paths.KSL) ---@type any
         local info = { Linkage = 0, UUID = loadId, ExecutionFunction = FName("None"), CallbackTarget = bpc }
-        lib:LoadAsset(bpc, bpc.BuildingSystemConfig.RepairMaterial, nil, info)
+        lib:LoadAsset(bpc, soft, nil, info)
         ctx.trace("highlight material: async load started")
         return nil
     end

@@ -44,6 +44,18 @@ describe("bb.hooks", function()
         assert.are.equal(1, #lines("hook .*CheckForExclusionZone %(map load%)"))
     end)
 
+    -- A lookup of a class that is not in memory walks the whole object array: one for each class.
+    it("looks up each class once in a pass, also with several hooks on it", function()
+        reg.listen("zone", BPC, "CheckForExclusionZone", function() end, {})
+        reg.listen("collision", BPC, "CollisionCheck", function() end, {})
+        reg.start()
+        assert.spy(env.spy.StaticFindObject).was.called(1)
+        load()
+        env.loadMap.post[1]()
+        assert.spy(env.spy.StaticFindObject).was.called(2)
+        assert.spy(env.spy.RegisterHook).was.called(2)
+    end)
+
     it("registers at the start when the class is in memory already", function()
         load()
         reg.listen("zone", BPC, "CheckForExclusionZone", function() end, {})

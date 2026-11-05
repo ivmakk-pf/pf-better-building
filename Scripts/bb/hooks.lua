@@ -101,17 +101,17 @@ function M.new(ctx)
     end
 
     -- Registers each hook of this wait kind (nil: no wait) that is not registered yet and whose
-    -- class is in memory now.
+    -- class is in memory now. Each class path is looked up once in a pass: the hooks of one class share it.
     local function arm(reason, wait)
+        local found = {} ---@type table<string, boolean>
         for _, entry in ipairs(paths) do
-            if
-                not entry.done
-                and entry.wait == wait
-                and ctx.valid(ctx.try(function()
-                    return StaticFindObject(entry.classPath)
-                end))
-            then
-                register(entry, reason)
+            if not entry.done and entry.wait == wait then
+                if found[entry.classPath] == nil then
+                    found[entry.classPath] = ctx.valid(ctx.try(function()
+                        return StaticFindObject(entry.classPath)
+                    end))
+                end
+                if found[entry.classPath] then register(entry, reason) end
             end
         end
     end

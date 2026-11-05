@@ -6,6 +6,7 @@ local BUILD_TRACE = paths.BPC .. ":BuildTrace"
 
 describe("move ui", function()
     local env, ctx, bpc, hit, bench, wall, rock
+    local repair -- the highlight material that the soft reference resolves to, nil while it is not loaded
     local now, traces, loads = 0, 0, {}
 
     local function part(class, gridType)
@@ -33,13 +34,17 @@ describe("move ui", function()
         rock = fakes.object({ class = "BP_Rock_C" })
         hit = bench
         -- The highlight material is in memory unless a test removes it.
-        env.objects[paths.REPAIR_MATERIAL] = fakes.object({ class = "MaterialInstanceConstant" })
+        repair = fakes.object({ class = "MaterialInstanceConstant" })
         env.objects[paths.STATIC_MESH] = fakes.object({ class = "Class", name = "StaticMeshComponent" })
         loads = {}
         env.objects[paths.KSL] = fakes.object({
             class = "KismetSystemLibrary",
             LoadAsset = function(_, context, ptr, onLoaded, info)
                 loads[#loads + 1] = { context = context, ptr = ptr, onLoaded = onLoaded, info = info }
+            end,
+            Conv_SoftObjectReferenceToObject = function(_, ptr)
+                assert(ptr == "soft pointer", "the soft reference of the building config")
+                return repair
             end,
         })
         bpc = fakes.object({
@@ -189,7 +194,7 @@ describe("move ui", function()
 
         it("loads the material asynchronously when it is not in memory, and turns the highlight on later", function()
             install()
-            env.objects[paths.REPAIR_MATERIAL] = nil
+            repair = nil
             frame()
             assert.are.same({}, toggles(bench))
             assert.are.equal(1, #loads)
@@ -206,29 +211,24 @@ describe("move ui", function()
             frame(1.2)
             assert.are.equal(2, #loads)
             assert.are_not.equal(loads[1].info.UUID, loads[2].info.UUID)
-            env.objects[paths.REPAIR_MATERIAL] = fakes.object({ class = "MaterialInstanceConstant" })
+            repair = fakes.object({ class = "MaterialInstanceConstant" })
             frame(0.5)
             assert.are.same({ true }, toggles(bench))
         end)
 
-        -- A lookup that misses walks the whole object array (a crash while the world streams).
-        it("looks up a missing material at most every 0.5 s", function()
+        -- A lookup by path that misses walks the whole object array (a crash while the world streams).
+        it("looks up no game asset by path while the material is not loaded", function()
             install()
-            env.objects[paths.REPAIR_MATERIAL] = nil
-            local function lookups()
-                local n = 0
-                for _, call in ipairs(env.spy.StaticFindObject.calls) do
-                    if call.vals[1] == paths.REPAIR_MATERIAL then n = n + 1 end
-                end
-                return n
-            end
-            frame()
-            for _ = 1, 3 do
+            repair = nil
+            local before = #env.spy.StaticFindObject.calls
+            for _ = 1, 5 do
                 frame(0.15)
             end
-            assert.are.equal(1, lookups())
-            frame(0.15)
-            assert.are.equal(2, lookups())
+            for i = before + 1, #env.spy.StaticFindObject.calls do
+                local path = tostring(env.spy.StaticFindObject.calls[i].vals[1])
+                assert(not path:match("^/Game/"), path)
+            end
+            assert.are.equal(1, #loads)
         end)
 
         it("runs the camera trace at most every 0.1 s and keeps the last result between", function()
@@ -275,7 +275,7 @@ describe("move ui", function()
 
         it("makes each highlight mesh blue with a dynamic instance of the repair material", function()
             install()
-            local material = env.objects[paths.REPAIR_MATERIAL]
+            local material = repair
             local mid = fakes.widget("MaterialInstanceDynamic")
             local function mesh(slotMaterial)
                 return fakes.widget("StaticMeshComponent", {
